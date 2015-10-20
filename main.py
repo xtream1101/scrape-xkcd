@@ -1,6 +1,5 @@
 import os
 import sys
-from sqlalchemy import *
 from custom_utils.custom_utils import CustomUtils
 from custom_utils.exceptions import *
 from custom_utils.sql import *
