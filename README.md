@@ -7,7 +7,7 @@ Scrape the site http://xkcd.com/ and save all the comics on the site and get mis
 ## Dependencies
 - [BeautifulSoup4](https://pypi.python.org/pypi/beautifulsoup4)
 - [SQLAlchemy](https://pypi.python.org/pypi/SQLAlchemy)
-- [custom_utils](https://xnet.serverx.co/git/xtream1101/custom-utils)
+- [custom_utils](https://github.com/xtream1101/custom-utils)
 
 ## Usage
 `$ python3 main.py "/dir/to/download/dir"`  
