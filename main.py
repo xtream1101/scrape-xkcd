@@ -1,5 +1,6 @@
 import os
 import sys
+import signal
 from custom_utils.custom_utils import CustomUtils
 from custom_utils.exceptions import *
 from custom_utils.sql import *
@@ -144,7 +145,13 @@ class Data(Base):
     safe_title = Column(String(100), nullable=False)
 
 
+def signal_handler(signal, frame):
+    print("")
+    sys.exit(0)
+
+
 if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal_handler)
     if len(sys.argv) < 2:
         print("You must pass in the save directory of the scraper")
 
