@@ -66,9 +66,10 @@ class Xkcd(CustomUtils):
         # Get the json data
         try:
             data = self.get_site(url, self._url_header, is_json=True)
-        except RequestsError:
-            # TODO: Do something more useful here i.e. let the user know and do not just start at 0
-            return 0
+        except RequestsError as e:
+            print("Error getting latest: " + str(e))
+            sys.exit(0)
+
         max_id = data['num']
         self.cprint("##\tNewest upload: " + str(max_id) + "\n")
         return int(max_id)
@@ -82,24 +83,26 @@ class Xkcd(CustomUtils):
         # There is no 0 comic
         # 404 does not exists (this is the joke)
         if id_ == 0 or id_ == 404:
-            return
+            return False
 
         url = "https://xkcd.com/" + str(id_) + "/info.0.json"
         try:
             prop = self.get_site(url, self._url_header, is_json=True)
-        except RequestsError:
-            # TODO: Do something more useful here i.e. let the user know
-            return
+        except RequestsError as e:
+            print("Error getting (" + url + "): " + str(e))
+            return False
+
         # prop Needs an id
         prop['id'] = str(prop['num'])
 
-        # #####
-        # # Download images
-        # #####
+        #####
+        # Download comics
+        #####
         file_ext = self.get_file_ext(prop['img'])
         file_name = prop['id']
         prop['save_path'] = self._base_dir + "/" + prop['id'][-1] + "/"
         prop['save_path'] += self.sanitize(file_name) + file_ext
+
         if self.download(prop['img'], prop['save_path'], self._url_header):
             self._save_meta_data(prop)
 
@@ -187,20 +190,20 @@ if __name__ == "__main__":
         config = configparser.ConfigParser()
         config.read(args.config)
 
-    # Check config file first
-    if 'main' in config:
-        if 'save_dir' in config['main']:
-            save_dir = config['main']['save_dir']
-        if 'restart' in config['main']:
-            if config['main']['restart'].lower() == 'true':
-                restart = True
-            else:
-                restart = False
+        # Check config file first
+        if 'main' in config:
+            if 'save_dir' in config['main']:
+                save_dir = config['main']['save_dir']
+            if 'restart' in config['main']:
+                if config['main']['restart'].lower() == 'true':
+                    restart = True
+                else:
+                    restart = False
 
-    # Proxies can only be set via config file
-    if 'proxy' in config:
-        if 'http' in config['proxy']:
-            proxy_list = config['proxy']['http'].split('\n')
+        # Proxies can only be set via config file
+        if 'proxy' in config:
+            if 'http' in config['proxy']:
+                proxy_list = config['proxy']['http'].split('\n')
 
     # Command line args will overwrite config args
     if args.dir is not None:
