@@ -68,7 +68,7 @@ class Xkcd(CustomUtils):
         url = "https://xkcd.com/info.0.json"
         # Get the json data
         try:
-            data = self.get_site(url, self._url_header, is_json=True)
+            data = self.get_site(url, self._url_header, page_format='json')
         except RequestsError as e:
             print("Error getting latest: " + str(e))
             sys.exit(0)
@@ -90,7 +90,7 @@ class Xkcd(CustomUtils):
 
         url = "https://xkcd.com/" + str(id_) + "/info.0.json"
         try:
-            prop = self.get_site(url, self._url_header, is_json=True)
+            prop = self.get_site(url, self._url_header, page_format='json')
         except RequestsError as e:
             print("Error getting (" + url + "): " + str(e))
             return False
