@@ -16,4 +16,5 @@ scraper_key =
 ```
 
 Requried:
+
     - Postgres database with a schema `xkcd`
