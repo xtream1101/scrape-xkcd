@@ -8,9 +8,12 @@ Must pass in a config file like so: `python3 xkcd-comics.py -c ~/scrapers.conf`
 
 See what the conf file need to be here: https://git.eddyhintze.com/xtream1101/scraper-lib
 
-This scraper also requires the section:
+This scraper also requires the section in the config:
 ```
 [xkcd-comics]
 # `scraper_key` is only needed if `scraper-monitor` is enabled
 scraper_key =
 ```
+
+Requried:
+    - Postgres database with a schema `xkcd`
