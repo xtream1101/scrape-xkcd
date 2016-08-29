@@ -1,6 +1,4 @@
-import os
-import sys
-from sqlalchemy import create_engine, Column, ForeignKey, Integer, String, DateTime, Date, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Date, Text
 from sqlalchemy.schema import CreateSchema
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
@@ -32,6 +30,7 @@ class Comic(Base):
     transcript = Column(Text)
     image_path = Column(String(512))
 
+
 class Setting(Base):
     __tablename__ = table_prefix + 'setting'
     __table_args__ = {'schema': SCHEMA}
@@ -62,15 +61,9 @@ db_session = DBSession()
 
 try:
     new_setting = Setting()
-    new_setting.bit=0
+    new_setting.bit = 0
     db_session.add(new_setting)
     db_session.commit()
 except IntegrityError:
     # Settings row has already been created
     db_session.rollback()
-
-
-
-
-
-

@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import json
@@ -7,8 +6,7 @@ import logging
 from scraper_monitor import scraper_monitor
 from models import db_session, Setting, Comic, NoResultFound
 import custom_utils as cutil
-from scrapers import Scraper, Web, args, RUN_SCRAPER_AS, config, SCRAPE_ID
-from pprint import pprint
+from scrapers import Scraper, Web
 
 # Create logger for this script
 logger = logging.getLogger(__name__)
@@ -122,7 +120,7 @@ class Xkcd(Scraper):
         """
         Get last comic scraped
         """
-        last_scraped_id = db_session.query(Setting).filter(Setting.bit==0).one().comic_last_id
+        last_scraped_id = db_session.query(Setting).filter(Setting.bit == 0).one().comic_last_id
 
         if last_scraped_id is None:
             last_scraped_id = 0
@@ -140,7 +138,7 @@ class Xkcd(Scraper):
             except ValueError:
                 last_comic_id = self.max_id
 
-            setting = db_session.query(Setting).filter(Setting.bit==0).one()
+            setting = db_session.query(Setting).filter(Setting.bit == 0).one()
             setting.comic_last_id = last_comic_id
             setting.comic_last_ran = cutil.get_datetime()
 
@@ -157,7 +155,7 @@ class Xkcd(Scraper):
         try:
             # Check if comic is in database, if so update else create
             try:
-                comic = db_session.query(Comic).filter(Comic.comic_id==data.get('comic_id')).one()
+                comic = db_session.query(Comic).filter(Comic.comic_id == data.get('comic_id')).one()
             except NoResultFound:
                 comic = Comic()
 
