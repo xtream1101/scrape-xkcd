@@ -15,6 +15,6 @@ This scraper also requires the section in the config:
 scraper_key =
 ```
 
-Requried:
+## Setup
 
-    - Postgres database with a schema `xkcd`
+Run `pip3 install -r requirements.txt`

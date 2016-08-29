@@ -5,9 +5,10 @@ import json
 import signal
 import logging
 from scraper_monitor import scraper_monitor
-from models import db_session, Comics
+from models import db_session, Setting, Comic, NoResultFound
 import custom_utils as cutil
 from scrapers import Scraper, Web, args, RUN_SCRAPER_AS, config, SCRAPE_ID
+from pprint import pprint
 
 # Create logger for this script
 logger = logging.getLogger(__name__)
@@ -51,11 +52,6 @@ class Worker:
                        'transcript': response.get('transcript'),
                        'raw_json': json.dumps(response),
                        }
-        new_comic = Comics()
-        new_comic.name = response.get('title')
-        db_session.add(new_comic)
-        db_session.commit()
-
 
         # Add raw data to db
         self.web.scraper.insert_data(parsed_data)
@@ -81,9 +77,6 @@ class Xkcd(Scraper):
 
     def __init__(self, config_file=None):
         super().__init__('xkcd')
-
-        # Gives access to `self.db`
-        self.db_setup()
 
         self.max_id = self.get_latest()
         self.last_id_scraped = self.get_last_scraped()
@@ -129,11 +122,7 @@ class Xkcd(Scraper):
         """
         Get last comic scraped
         """
-        last_scraped_id = None
-        with self.db.getcursor() as cur:
-            cur.execute("""SELECT comic_last_id FROM xkcd.setting WHERE bit=0""")
-
-            last_scraped_id = cur.fetchone()[0]
+        last_scraped_id = db_session.query(Setting).filter(Setting.bit==0).one().comic_last_id
 
         if last_scraped_id is None:
             last_scraped_id = 0
@@ -142,20 +131,22 @@ class Xkcd(Scraper):
 
     def log_last_scraped(self):
         try:
-            with self.db.getcursor() as cur:
-                # Find the lowest comic id we did not scrape yet and start there next time
-                if 404 in self.comic_ids:
-                    # This is never successful because it always returns a 404 page
-                    self.comic_ids.remove(404)
-                try:
-                    last_comic = min(self.comic_ids) - 1
-                except ValueError:
-                    last_comic = self.max_id
+            # Find the lowest comic id we did not scrape yet and start there next time
+            if 404 in self.comic_ids:
+                # This is never successful because it always returns a 404 page
+                self.comic_ids.remove(404)
+            try:
+                last_comic_id = min(self.comic_ids) - 1
+            except ValueError:
+                last_comic_id = self.max_id
 
-                # Log that id
-                cur.execute("""UPDATE xkcd.setting
-                               SET comic_last_id=%(last_id)s, comic_last_ran=%(timestamp)s
-                               WHERE bit=0""", {'last_id': last_comic, 'timestamp': cutil.get_datetime()})
+            setting = db_session.query(Setting).filter(Setting.bit==0).one()
+            setting.comic_last_id = last_comic_id
+            setting.comic_last_ran = cutil.get_datetime()
+
+            db_session.add(setting)
+            db_session.commit()
+
         except:
             logger.exception("Problem logging last comic scraped")
 
@@ -163,21 +154,27 @@ class Xkcd(Scraper):
         """
         Will handle inserting data into the database
         """
-        # TODO: Make UPSERT
         try:
-            with self.db.getcursor() as cur:
-                cur.execute("""INSERT INTO xkcd.comic
-                               (alt, comic_id, image_path, posted_at, raw_json, time_collected, title, transcript)
-                               VALUES
-                               (%(alt)s, %(comic_id)s, %(image_path)s, %(posted_at)s, %(raw_json)s,
-                                %(time_collected)s, %(title)s, %(transcript)s)""",
-                            data)
+            # Check if comic is in database, if so update else create
+            try:
+                comic = db_session.query(Comic).filter(Comic.comic_id==data.get('comic_id')).one()
+            except NoResultFound:
+                comic = Comic()
 
-                # Log how many rows were added
-                rows_affected = cur.rowcount
-                self.track_stat('rows_added_to_db', rows_affected)
+            comic.title = data.get('title')
+            comic.alt = data.get('alt')
+            comic.comic_id = data.get('comic_id')
+            comic.image_path = data.get('image_path')
+            comic.posted_at = data.get('posted_at')
+            comic.raw_json = data.get('raw_json')
+            comic.time_collected = data.get('time_collected')
+            comic.transcript = data.get('transcript')
+
+            db_session.add(comic)
+            db_session.commit()
 
         except Exception:
+            db_session.rollback()
             logger.exception("Error adding to db {data}".format(data=data))
 
 
@@ -190,8 +187,6 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, sigint_handler)
 
     try:
-        # Make sure tables are created
-
         # Setup the scraper
         scraper = Xkcd()
         try:
