@@ -5,9 +5,9 @@ import json
 import signal
 import logging
 from scraper_monitor import scraper_monitor
+from models import db_session, Comics
 import custom_utils as cutil
 from scrapers import Scraper, Web, args, RUN_SCRAPER_AS, config, SCRAPE_ID
-# from pprint import pprint
 
 # Create logger for this script
 logger = logging.getLogger(__name__)
@@ -51,6 +51,11 @@ class Worker:
                        'transcript': response.get('transcript'),
                        'raw_json': json.dumps(response),
                        }
+        new_comic = Comics()
+        new_comic.name = response.get('title')
+        db_session.add(new_comic)
+        db_session.commit()
+
 
         # Add raw data to db
         self.web.scraper.insert_data(parsed_data)
@@ -185,8 +190,12 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, sigint_handler)
 
     try:
+        # Make sure tables are created
+
+        # Setup the scraper
         scraper = Xkcd()
         try:
+            # Start scraping
             scraper.start()
             scraper.cleanup()
 
