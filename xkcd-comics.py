@@ -1,12 +1,12 @@
 import sys
 import time
 import json
+import cutil
 import signal
 import logging
 from scraper_monitor import scraper_monitor
 from models import db_session, Setting, Comic, NoResultFound
-import custom_utils as cutil
-from scrapers import Scraper, Web
+from scraper_lib import Scraper, Web
 
 # Create logger for this script
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ class Xkcd(Scraper):
         # Log how many items in total we will be parsing
         scraper.stats['ref_data_count'] = len(self.comic_ids)
 
-        # Use `selenium` or `requests` here
+        # Only ever use 1 thread here
         self.thread_profile(1, 'requests', self.comic_ids, Worker)
 
     def get_latest(self):
@@ -170,6 +170,7 @@ class Xkcd(Scraper):
 
             db_session.add(comic)
             db_session.commit()
+            # self.track_stat('rows_added_to_db', rows_affected)
 
         except Exception:
             db_session.rollback()
