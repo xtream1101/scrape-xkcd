@@ -5,7 +5,7 @@ import cutil
 import signal
 import logging
 from scraper_monitor import scraper_monitor
-from models import db_session, Setting, Comic, NoResultFound
+from models import db_session, Setting, Whatif, NoResultFound
 from scraper_lib import Scraper, Web
 
 # Create logger for this script
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class Worker:
 
-    def __init__(self, web, comic_id):
+    def __init__(self, web, whatif_id):
         """
         Worker Profile
 
@@ -23,12 +23,15 @@ class Worker:
         """
         # `web` is what utilizes the profiles and proxying
         self.web = web
+        self.whatif_id = whatif_id
 
         # Get the sites content as a beautifulsoup object
-        url = 'https://xkcd.com/{comic_id}/info.0.json'.format(comic_id=comic_id)
-        response = self.web.get_site(url, page_format='json')
+        logger.info("Getting what if {id}".format(id=self.whatif_id))
+        url = "http://what-if.xkcd.com/{id}/".format(id=self.whatif_id)
+        response = self.web.get_site(url, page_format='html')
         if response is None:
             logger.warning("Response was None for url {url}".format(url=url))
+
         else:
             parsed_data = self.parse(response)
             if len(parsed_data) > 0:
@@ -36,7 +39,7 @@ class Worker:
                 self.web.scraper.insert_data(parsed_data)
 
                 # Remove id from list of comics to get
-                self.web.scraper.comic_ids.remove(comic_id)
+                self.web.scraper.whatif_ids.remove(self.whatif_id)
 
                 # Add success count to stats. Keeps track of how much ref data has been parsed
                 self.web.scraper.track_stat('ref_data_success_count', 1)
@@ -44,43 +47,36 @@ class Worker:
         # Take it easy on the site
         time.sleep(1)
 
-    def parse(self, response):
+    def parse(self, soup):
         """
-        :return: Dict the content
+        :return: List of items with their details
         """
-        rdata = {}
-        # Parse the items here and return the content to be added to the db
-        logger.info("Getting comic {comic_id}-{comic_title}".format(comic_id=response.get('num'),
-                                                                    comic_title=response.get('title')))
+        rdata = self.web.scraper.archive_list.get(self.whatif_id)
 
-        comic_filename = '{last_num}/{comic_id}{file_ext}'\
-                         .format(last_num=str(response.get('num'))[-1],
-                                 comic_id=response.get('num'),
-                                 file_ext=cutil.get_file_ext(response.get('img'))
-                                 )
-        rdata = {'comic_id': response.get('num'),
-                 'alt': response.get('alt'),
-                 'file_path': self.web.download(response.get('img'), comic_filename),
-                 'posted_at': '{year}-{month}-{day}'.format(year=response.get('year'),
-                                                            month=response.get('month'),
-                                                            day=response.get('day')),
-                 'time_collected': cutil.get_datetime(),
-                 'title': response.get('title'),
-                 'transcript': response.get('transcript'),
-                 'raw_json': json.dumps(response),
-                 }
+        # Parse the items here and return the content to be added to the db
+        article = self.web.driver.selenium.find_element_by_css_selector('article.entry')
+
+        rdata['question'] = soup.find('article', {'class': 'entry'}).find('p', {'id': 'question'}).get_text()
+
+        whatif_filename = '{last_num}/{comic_id}.png'\
+                          .format(last_num=str(self.whatif_id)[-1],
+                                  comic_id=self.whatif_id)
+        rdata.update({'whatif_id': self.whatif_id,
+                      'file_path': self.web.screenshot(whatif_filename, element=article),
+                      'time_collected': cutil.get_datetime(),
+                      })
 
         return rdata
 
-
-class XkcdComics(Scraper):
+class XkcdWhatif(Scraper):
 
     def __init__(self, config_file=None):
         super().__init__('xkcd')
 
+        self.archive_list = self.load_archive_list()
         self.max_id = self.get_latest()
         self.last_id_scraped = self.get_last_scraped()
-        self.comic_ids = []
+        self.whatif_ids = []
 
     def start(self):
         """
@@ -88,41 +84,64 @@ class XkcdComics(Scraper):
         """
         if self.max_id == self.last_id_scraped:
             # No need to continue
-            logger.info("Already have the newest comic")
+            logger.info("Already have the newest whatif")
             return
 
-        self.comic_ids = list(range(self.last_id_scraped + 1, self.max_id + 1))
+        self.whatif_ids = list(range(self.last_id_scraped + 1, self.max_id + 1))
 
         # Log how many items in total we will be parsing
-        scraper.stats['ref_data_count'] = len(self.comic_ids)
+        scraper.stats['ref_data_count'] = len(self.whatif_ids)
 
         # Only ever use 1 thread here
-        self.thread_profile(1, 'requests', self.comic_ids, Worker)
+        self.thread_profile(1, 'selenium_phantomjs', self.whatif_ids, Worker)
+
+
+    def load_archive_list(self):
+        """
+        Load all the whatifs and store in a dict with the id's as keys
+        Need to do this since this is the only place where the date posted is listed
+        """
+        rdata = {}
+        tmp_web = Web(self, 'requests')
+
+        url = "http://what-if.xkcd.com/archive/"
+        try:
+            soup = tmp_web.get_site(url, page_format='html')
+        except RequestsError as e:
+            logger.critical("Problem getting whatif archive", exc_info=True)
+            sys.exit(1)
+
+        entries = soup.find_all('div', {'class': 'archive-entry'})
+
+        for entry in entries:
+            try:
+                _id = int(entry.find('a')['href'].split('/')[-2])
+                title = entry.find(class_='archive-title').text
+                posted_at = entry.find(class_='archive-date').text
+
+                rdata[_id] = {'posted_at': posted_at,
+                              'title': title,
+                              }
+            except (AttributeError, ValueError):
+                logger.critical("Cannot parse data for entry {entry}".format(entry=str(entry)))
+
+        return rdata
+
 
     def get_latest(self):
         """
-        Get the latest comic id posted
+        Get the latest whatif id posted
         """
-        tmp_web = Web(self, 'requests')
-
-        url = "https://xkcd.com/info.0.json"
-        # Get the json data
-        try:
-            data = tmp_web.get_site(url, page_format='json')
-        except:
-            logger.critical("Problem getting latest comic id", exc_info=True)
-            sys.exit(1)
-
-        max_id = int(data.get('num'))
+        max_id = max(self.archive_list.keys())
         logger.info("Newest upload: {id}".format(id=max_id))
 
         return max_id
 
     def get_last_scraped(self):
         """
-        Get last comic scraped
+        Get last whatif scraped
         """
-        last_scraped_id = db_session.query(Setting).filter(Setting.bit == 0).one().comic_last_id
+        last_scraped_id = db_session.query(Setting).filter(Setting.bit == 0).one().whatif_last_id
 
         if last_scraped_id is None:
             last_scraped_id = 0
@@ -131,48 +150,41 @@ class XkcdComics(Scraper):
 
     def log_last_scraped(self):
         try:
-            # Find the lowest comic id we did not scrape yet and start there next time
-            if 404 in self.comic_ids:
-                # This is never successful because it always returns a 404 page
-                self.comic_ids.remove(404)
             try:
-                last_comic_id = min(self.comic_ids) - 1
+                last_whatif_id = min(self.whatif_ids) - 1
             except ValueError:
-                last_comic_id = self.max_id
+                last_whatif_id = self.max_id
 
             setting = db_session.query(Setting).filter(Setting.bit == 0).one()
-            setting.comic_last_id = last_comic_id
-            setting.comic_last_ran = cutil.get_datetime()
+            setting.whatif_last_id = last_whatif_id
+            setting.whatif_last_ran = cutil.get_datetime()
 
             db_session.add(setting)
             db_session.commit()
 
         except:
-            logger.exception("Problem logging last comic scraped")
+            logger.exception("Problem logging last whatif scraped")
 
     def insert_data(self, data):
         """
         Will handle inserting data into the database
         """
         try:
-            # Check if comic is in database, if so update else create
+            # Check if whatif is in database, if so update else create
             try:
-                comic = db_session.query(Comic).filter(Comic.comic_id == data.get('comic_id')).one()
+                whatif = db_session.query(Whatif).filter(Whatif.whatif_id == data.get('whatif_id')).one()
             except NoResultFound:
-                comic = Comic()
+                whatif = Whatif()
 
-            comic.title = data.get('title')
-            comic.alt = data.get('alt')
-            comic.comic_id = data.get('comic_id')
-            comic.file_path = data.get('file_path')
-            comic.posted_at = data.get('posted_at')
-            comic.raw_json = data.get('raw_json')
-            comic.time_collected = data.get('time_collected')
-            comic.transcript = data.get('transcript')
+            whatif.title = data.get('title')
+            whatif.question = data.get('question')
+            whatif.whatif_id = data.get('whatif_id')
+            whatif.file_path = data.get('file_path')
+            whatif.posted_at = data.get('posted_at')
+            whatif.time_collected = data.get('time_collected')
 
-            db_session.add(comic)
+            db_session.add(whatif)
             db_session.commit()
-            # self.track_stat('rows_added_to_db', rows_affected)
 
         except Exception:
             db_session.rollback()
@@ -189,7 +201,7 @@ if __name__ == '__main__':
 
     try:
         # Setup the scraper
-        scraper = XkcdComics()
+        scraper = XkcdWhatif()
         try:
             # Start scraping
             scraper.start()
