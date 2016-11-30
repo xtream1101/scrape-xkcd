@@ -29,8 +29,27 @@ class Worker:
         response = self.web.get_site(url, page_format='json')
         if response is None:
             logger.warning("Response was None for url {url}".format(url=url))
-            return
+        else:
+            parsed_data = self.parse(response)
+            if len(parsed_data) > 0:
+                # Add raw data to db
+                self.web.scraper.insert_data(parsed_data)
 
+                # Remove id from list of comics to get
+                self.web.scraper.comic_ids.remove(comic_id)
+
+                # Add success count to stats. Keeps track of how much ref data has been parsed
+                self.web.scraper.track_stat('ref_data_success_count', 1)
+
+        # Take it easy on the site
+        time.sleep(1)
+
+    def parse(self, response):
+        """
+        :return: Dict the content
+        """
+        rdata = {}
+        # Parse the items here and return the content to be added to the db
         logger.info("Getting comic {comic_id}-{comic_title}".format(comic_id=response.get('num'),
                                                                     comic_title=response.get('title')))
 
@@ -39,39 +58,22 @@ class Worker:
                                  comic_id=response.get('num'),
                                  file_ext=cutil.get_file_ext(response.get('img'))
                                  )
-        parsed_data = {'comic_id': response.get('num'),
-                       'alt': response.get('alt'),
-                       'image_path': self.web.download(response.get('img'), comic_filename),
-                       'posted_at': '{year}-{month}-{day}'.format(year=response.get('year'),
-                                                                  month=response.get('month'),
-                                                                  day=response.get('day')),
-                       'time_collected': cutil.get_datetime(),
-                       'title': response.get('title'),
-                       'transcript': response.get('transcript'),
-                       'raw_json': json.dumps(response),
-                       }
+        rdata = {'comic_id': response.get('num'),
+                 'alt': response.get('alt'),
+                 'file_path': self.web.download(response.get('img'), comic_filename),
+                 'posted_at': '{year}-{month}-{day}'.format(year=response.get('year'),
+                                                            month=response.get('month'),
+                                                            day=response.get('day')),
+                 'time_collected': cutil.get_datetime(),
+                 'title': response.get('title'),
+                 'transcript': response.get('transcript'),
+                 'raw_json': json.dumps(response),
+                 }
 
-        # Add raw data to db
-        self.web.scraper.insert_data(parsed_data)
-
-        # Remove id from list of comics to get
-        self.web.scraper.comic_ids.remove(comic_id)
-
-        # Add success count to stats. Keeps track of how much ref data has been parsed
-        self.web.scraper.track_stat('ref_data_success_count', 1)
-
-        # Take it easy on the site
-        time.sleep(1)
-
-    def parse(self, content):
-        """
-        :return: List of items with their details
-        """
-        # Parse the items here and return the content to be added to the db
-        pass
+        return rdata
 
 
-class Xkcd(Scraper):
+class XkcdComics(Scraper):
 
     def __init__(self, config_file=None):
         super().__init__('xkcd')
@@ -162,7 +164,7 @@ class Xkcd(Scraper):
             comic.title = data.get('title')
             comic.alt = data.get('alt')
             comic.comic_id = data.get('comic_id')
-            comic.image_path = data.get('image_path')
+            comic.file_path = data.get('file_path')
             comic.posted_at = data.get('posted_at')
             comic.raw_json = data.get('raw_json')
             comic.time_collected = data.get('time_collected')
@@ -187,7 +189,7 @@ if __name__ == '__main__':
 
     try:
         # Setup the scraper
-        scraper = Xkcd()
+        scraper = XkcdComics()
         try:
             # Start scraping
             scraper.start()

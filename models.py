@@ -28,7 +28,19 @@ class Comic(Base):
     title = Column(String(1024))
     alt = Column(Text)
     transcript = Column(Text)
-    image_path = Column(String(512))
+    file_path = Column(String(512))
+
+
+class Whatif(Base):
+    __tablename__ = table_prefix + 'whatif'
+    __table_args__ = {'schema': SCHEMA}
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    posted_at = Column(Date)
+    time_collected = Column(DateTime)
+    whatif_id = Column(Integer)
+    title = Column(String(1024))
+    question = Column(Text)
+    file_path = Column(String(512))
 
 
 class Setting(Base):
@@ -37,8 +49,8 @@ class Setting(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     comic_last_ran = Column(DateTime)
     comic_last_id = Column(Integer)
-    what_if_ran = Column(DateTime)
-    what_if_id = Column(Integer)
+    whatif_last_ran = Column(DateTime)
+    whatif_last_id = Column(Integer)
     bit = Column(Integer, unique=True)
 
 
