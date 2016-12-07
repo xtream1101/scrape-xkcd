@@ -28,7 +28,8 @@ class Comic(Base):
     title = Column(String(1024))
     alt = Column(Text)
     transcript = Column(Text)
-    file_path = Column(String(512))
+    source_file_location = Column(String(2048))
+    saved_file_location = Column(String(2048))
 
 
 class Whatif(Base):
@@ -40,7 +41,7 @@ class Whatif(Base):
     whatif_id = Column(Integer)
     title = Column(String(1024))
     question = Column(Text)
-    file_path = Column(String(512))
+    saved_file_location = Column(String(2048))
 
 
 class Setting(Base):

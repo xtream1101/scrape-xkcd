@@ -4,9 +4,12 @@ import json
 import cutil
 import signal
 import logging
+from pprint import pprint
 from scraper_monitor import scraper_monitor
 from models import db_session, Setting, Comic, NoResultFound
-from scraper_lib import Scraper, Web
+from scraper_lib import Scraper
+from web_wrapper import DriverRequests
+
 
 # Create logger for this script
 logger = logging.getLogger(__name__)
@@ -14,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class Worker:
 
-    def __init__(self, web, comic_id):
+    def __init__(self, scraper, web, comic_id):
         """
         Worker Profile
 
@@ -23,6 +26,7 @@ class Worker:
         """
         # `web` is what utilizes the profiles and proxying
         self.web = web
+        self.scraper = scraper
 
         # Get the sites content as a beautifulsoup object
         url = 'https://xkcd.com/{comic_id}/info.0.json'.format(comic_id=comic_id)
@@ -33,13 +37,13 @@ class Worker:
             parsed_data = self.parse(response)
             if len(parsed_data) > 0:
                 # Add raw data to db
-                self.web.scraper.insert_data(parsed_data)
+                self.scraper.insert_data(parsed_data)
 
                 # Remove id from list of comics to get
-                self.web.scraper.comic_ids.remove(comic_id)
+                self.scraper.comic_ids.remove(comic_id)
 
                 # Add success count to stats. Keeps track of how much ref data has been parsed
-                self.web.scraper.track_stat('ref_data_success_count', 1)
+                self.scraper.track_stat('ref_data_success_count', 1)
 
         # Take it easy on the site
         time.sleep(1)
@@ -53,14 +57,16 @@ class Worker:
         logger.info("Getting comic {comic_id}-{comic_title}".format(comic_id=response.get('num'),
                                                                     comic_title=response.get('title')))
 
-        comic_filename = '{last_num}/{comic_id}{file_ext}'\
-                         .format(last_num=str(response.get('num'))[-1],
+        comic_filename = '{base}/{last_num}/{comic_id}{file_ext}'\
+                         .format(base=self.scraper.BASE_SAVE_DIR,
+                                 last_num=str(response.get('num'))[-1],
                                  comic_id=response.get('num'),
                                  file_ext=cutil.get_file_ext(response.get('img'))
                                  )
         rdata = {'comic_id': response.get('num'),
                  'alt': response.get('alt'),
-                 'file_path': self.web.download(response.get('img'), comic_filename),
+                 'source_file_location': response.get('img'),
+                 'saved_file_location': self.web.download(response.get('img'), comic_filename),
                  'posted_at': '{year}-{month}-{day}'.format(year=response.get('year'),
                                                             month=response.get('month'),
                                                             day=response.get('day')),
@@ -97,13 +103,13 @@ class XkcdComics(Scraper):
         scraper.stats['ref_data_count'] = len(self.comic_ids)
 
         # Only ever use 1 thread here
-        self.thread_profile(1, 'requests', self.comic_ids, Worker)
+        self.thread_profile(1, DriverRequests, self.comic_ids, Worker)
 
     def get_latest(self):
         """
         Get the latest comic id posted
         """
-        tmp_web = Web(self, 'requests')
+        tmp_web = DriverRequests()
 
         url = "https://xkcd.com/info.0.json"
         # Get the json data
@@ -164,7 +170,8 @@ class XkcdComics(Scraper):
             comic.title = data.get('title')
             comic.alt = data.get('alt')
             comic.comic_id = data.get('comic_id')
-            comic.file_path = data.get('file_path')
+            comic.source_file_location = data.get('source_file_location')
+            comic.saved_file_location = data.get('saved_file_location')
             comic.posted_at = data.get('posted_at')
             comic.raw_json = data.get('raw_json')
             comic.time_collected = data.get('time_collected')
@@ -181,6 +188,7 @@ class XkcdComics(Scraper):
 
 def sigint_handler(signal, frame):
     logger.critical("Keyboard Interrupt")
+    pprint(scraper.stats)
     sys.exit(0)
 
 
