@@ -1,12 +1,12 @@
 import sys
 import time
-import json
 import cutil
 import signal
 import logging
 from scraper_monitor import scraper_monitor
 from models import db_session, Setting, Whatif, NoResultFound
-from scraper_lib import Scraper, Web
+from scraper_lib import Scraper
+from web_wrapper import DriverSeleniumPhantomJS, DriverRequests
 
 # Create logger for this script
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class Worker:
 
-    def __init__(self, web, whatif_id):
+    def __init__(self, scraper, web, whatif_id):
         """
         Worker Profile
 
@@ -23,6 +23,7 @@ class Worker:
         """
         # `web` is what utilizes the profiles and proxying
         self.web = web
+        self.scraper = scraper
         self.whatif_id = whatif_id
 
         # Get the sites content as a beautifulsoup object
@@ -36,13 +37,13 @@ class Worker:
             parsed_data = self.parse(response)
             if len(parsed_data) > 0:
                 # Add raw data to db
-                self.web.scraper.insert_data(parsed_data)
+                self.scraper.insert_data(parsed_data)
 
                 # Remove id from list of comics to get
-                self.web.scraper.whatif_ids.remove(self.whatif_id)
+                self.scraper.whatif_ids.remove(self.whatif_id)
 
                 # Add success count to stats. Keeps track of how much ref data has been parsed
-                self.web.scraper.track_stat('ref_data_success_count', 1)
+                self.scraper.track_stat('ref_data_success_count', 1)
 
         # Take it easy on the site
         time.sleep(1)
@@ -51,22 +52,25 @@ class Worker:
         """
         :return: List of items with their details
         """
-        rdata = self.web.scraper.archive_list.get(self.whatif_id)
+        rdata = self.scraper.archive_list.get(self.whatif_id)
 
         # Parse the items here and return the content to be added to the db
-        article = self.web.driver.selenium.find_element_by_css_selector('article.entry')
+        article = self.web.driver.find_element_by_css_selector('article.entry')
 
         rdata['question'] = soup.find('article', {'class': 'entry'}).find('p', {'id': 'question'}).get_text()
 
-        whatif_filename = '{last_num}/{comic_id}.png'\
-                          .format(last_num=str(self.whatif_id)[-1],
-                                  comic_id=self.whatif_id)
+        whatif_filename = '{base}/{last_num}/{whatif_id}.png'\
+                          .format(base=self.scraper.BASE_SAVE_DIR,
+                                  last_num=str(self.whatif_id)[-1],
+                                  whatif_id=self.whatif_id)
+
         rdata.update({'whatif_id': self.whatif_id,
-                      'file_path': self.web.screenshot(whatif_filename, element=article),
+                      'saved_file_location': self.web.screenshot(whatif_filename, element=article),
                       'time_collected': cutil.get_datetime(),
                       })
 
         return rdata
+
 
 class XkcdWhatif(Scraper):
 
@@ -93,8 +97,7 @@ class XkcdWhatif(Scraper):
         scraper.stats['ref_data_count'] = len(self.whatif_ids)
 
         # Only ever use 1 thread here
-        self.thread_profile(1, 'selenium_phantomjs', self.whatif_ids, Worker)
-
+        self.thread_profile(1, DriverSeleniumPhantomJS, self.whatif_ids, Worker)
 
     def load_archive_list(self):
         """
@@ -102,7 +105,7 @@ class XkcdWhatif(Scraper):
         Need to do this since this is the only place where the date posted is listed
         """
         rdata = {}
-        tmp_web = Web(self, 'requests')
+        tmp_web = DriverRequests()
 
         url = "http://what-if.xkcd.com/archive/"
         try:
@@ -126,7 +129,6 @@ class XkcdWhatif(Scraper):
                 logger.critical("Cannot parse data for entry {entry}".format(entry=str(entry)))
 
         return rdata
-
 
     def get_latest(self):
         """
@@ -179,7 +181,7 @@ class XkcdWhatif(Scraper):
             whatif.title = data.get('title')
             whatif.question = data.get('question')
             whatif.whatif_id = data.get('whatif_id')
-            whatif.file_path = data.get('file_path')
+            whatif.saved_file_location = data.get('saved_file_location')
             whatif.posted_at = data.get('posted_at')
             whatif.time_collected = data.get('time_collected')
 
