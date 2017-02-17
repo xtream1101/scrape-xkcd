@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import json
@@ -6,7 +7,7 @@ import signal
 import logging
 from pprint import pprint
 from scraper_monitor import scraper_monitor
-from models import db_session, Setting, Comic, NoResultFound
+from models import db_session, Setting, Comic, NoResultFound, DBSession
 from scraper_lib import Scraper
 from web_wrapper import DriverRequests
 
@@ -63,13 +64,15 @@ class Worker:
                                  comic_id=response.get('num'),
                                  file_ext=cutil.get_file_ext(response.get('img'))
                                  )
+        posted_at = '{year}-{month}-{day}'.format(year=response.get('year'),
+                                                  month=response.get('month'),
+                                                  day=response.get('day'))
         rdata = {'comic_id': response.get('num'),
                  'alt': response.get('alt'),
                  'source_file_location': response.get('img'),
-                 'saved_file_location': self.web.download(response.get('img'), comic_filename),
-                 'posted_at': '{year}-{month}-{day}'.format(year=response.get('year'),
-                                                            month=response.get('month'),
-                                                            day=response.get('day')),
+                 'saved_file_location': self.web.download(response.get('img'), comic_filename)
+                                                .replace(self.scraper.BASE_DATA_DIR + os.path.sep, ''),
+                 'posted_at': cutil.str_to_date(posted_at, formats=["%Y-%m-%d"]),
                  'time_collected': cutil.get_datetime(),
                  'title': response.get('title'),
                  'transcript': response.get('transcript'),
@@ -161,6 +164,7 @@ class XkcdComics(Scraper):
         Will handle inserting data into the database
         """
         try:
+            db_session = DBSession()
             # Check if comic is in database, if so update else create
             try:
                 comic = db_session.query(Comic).filter(Comic.comic_id == data.get('comic_id')).one()

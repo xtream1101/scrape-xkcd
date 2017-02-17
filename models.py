@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Date, Text
 from sqlalchemy.schema import CreateSchema
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import ProgrammingError, IntegrityError
@@ -13,8 +13,8 @@ SCHEMA = 'xkcd'
 table_prefix = ''
 
 if not raw_config.get('database', 'uri').startswith('postgres'):
-    SCHEMA = None
     table_prefix = SCHEMA + '_'
+    SCHEMA = None
 
 
 class Comic(Base):
@@ -28,6 +28,7 @@ class Comic(Base):
     title = Column(String(1024))
     alt = Column(Text)
     transcript = Column(Text)
+    ocr = Column(Text)
     source_file_location = Column(String(2048))
     saved_file_location = Column(String(2048))
 
@@ -41,6 +42,7 @@ class Whatif(Base):
     whatif_id = Column(Integer)
     title = Column(String(1024))
     question = Column(Text)
+    ocr = Column(Text)
     saved_file_location = Column(String(2048))
 
 
@@ -68,7 +70,7 @@ Base.metadata.create_all(engine)
 
 Base.metadata.bind = engine
 
-DBSession = sessionmaker(bind=engine)
+DBSession = scoped_session(sessionmaker(bind=engine))
 
 db_session = DBSession()
 

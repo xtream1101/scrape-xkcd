@@ -1,10 +1,11 @@
+import os
 import sys
 import time
 import cutil
 import signal
 import logging
 from scraper_monitor import scraper_monitor
-from models import db_session, Setting, Whatif, NoResultFound
+from models import db_session, Setting, Whatif, NoResultFound, DBSession
 from scraper_lib import Scraper
 from web_wrapper import DriverSeleniumPhantomJS, DriverRequests
 
@@ -65,7 +66,8 @@ class Worker:
                                   whatif_id=self.whatif_id)
 
         rdata.update({'whatif_id': self.whatif_id,
-                      'saved_file_location': self.web.screenshot(whatif_filename, element=article),
+                      'saved_file_location': self.web.screenshot(whatif_filename, element=article)
+                                                     .replace(self.scraper.BASE_DATA_DIR + os.path.sep, ''),
                       'time_collected': cutil.get_datetime(),
                       })
 
@@ -110,7 +112,7 @@ class XkcdWhatif(Scraper):
         url = "http://what-if.xkcd.com/archive/"
         try:
             soup = tmp_web.get_site(url, page_format='html')
-        except RequestsError as e:
+        except Exception:
             logger.critical("Problem getting whatif archive", exc_info=True)
             sys.exit(1)
 
@@ -172,6 +174,7 @@ class XkcdWhatif(Scraper):
         Will handle inserting data into the database
         """
         try:
+            db_session = DBSession()
             # Check if whatif is in database, if so update else create
             try:
                 whatif = db_session.query(Whatif).filter(Whatif.whatif_id == data.get('whatif_id')).one()
